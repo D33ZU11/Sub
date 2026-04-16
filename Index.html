@@ -5,10 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Visual Board - Private Edition</title>
     <style>
-        :root {
-            --bg: #f1f5f9; --primary: #2563eb; --folder: #64748b;
-            --text: #1e293b; --danger: #ef4444; --success: #22c55e; --locked: #6366f1;
-        }
+        :root { --bg: #f1f5f9; --primary: #2563eb; --folder: #64748b; --text: #1e293b; --danger: #ef4444; --success: #22c55e; --locked: #6366f1; }
         * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
         .container { max-width: 800px; margin: 0 auto; }
@@ -65,18 +62,38 @@
     </div>
 </div>
 
-<script src="library.js"></script>
-
 <script>
+    // --- EDIT YOUR FOLDERS AND CARDS HERE ---
+    const PERMANENT_LIBRARY = {
+        "Private": [
+            { id: "p1", label: "Example", img: "https://via.placeholder.com/150", p: true }
+        ],
+        "Time": [
+            { id: "t1", label: 'Wait', img: 'https://cdn-icons-png.flaticon.com/512/2997/2997985.png' }
+        ],
+        "Social": [
+            { id: "s1", label: 'Help', img: 'https://cdn-icons-png.flaticon.com/512/1182/1182740.png' }
+        ]
+    };
+    // ----------------------------------------
+
     const PASSCODE = "6969";
     const SLOT_COUNT = 6;
     
-    // Fallback if library.js fails to load
-    const defaultData = typeof INITIAL_DB !== 'undefined' ? INITIAL_DB : { "Main": [] };
-
-    // Loads from Browser Memory OR the library.js file
-    let database = JSON.parse(localStorage.getItem('pecs_db_v4')) || defaultData;
+    // Logic to merge permanent data with any new stuff added via the app buttons
+    let database = JSON.parse(localStorage.getItem('pecs_db_v4')) || PERMANENT_LIBRARY;
     
+    // Ensure permanent items always exist even if user cleared local storage
+    Object.keys(PERMANENT_LIBRARY).forEach(cat => {
+        if (!database[cat]) database[cat] = PERMANENT_LIBRARY[cat];
+        else {
+            // Add permanent cards if they are missing
+            PERMANENT_LIBRARY[cat].forEach(pCard => {
+                if (!database[cat].find(c => c.id === pCard.id)) database[cat].push(pCard);
+            });
+        }
+    });
+
     let state = { 
         routine: Array(SLOT_COUNT).fill(null), 
         currentCategory: Object.keys(database)[0],
@@ -120,7 +137,7 @@
             return;
         }
 
-        currentCatLabel.innerText = state.currentCategory || "No Folders";
+        currentCatLabel.innerText = state.currentCategory || "Select Folder";
         document.getElementById('delFolderBtn').style.display = categories.length > 0 ? "block" : "none";
 
         let libHtml = (database[state.currentCategory] || []).map((item, index) => `
@@ -137,39 +154,14 @@
     }
 
     function setCategory(cat) { if (isLocked(cat)) { if (!checkPass()) return; } state.currentCategory = cat; render(); }
-
-    function addNewCategory() {
-        const name = prompt("Folder Name:");
-        if (name) { database[name] = []; state.currentCategory = name; saveDb(); render(); }
-    }
-
-    function deleteCurrentCategory() {
-        if (confirm(`Delete folder?`)) { delete database[state.currentCategory]; state.currentCategory = Object.keys(database)[0]; saveDb(); render(); }
-    }
-
-    function addLinkCard() {
-        const label = prompt("Card Name:");
-        const imgUrl = prompt("ImgLink URL:");
-        if (label && imgUrl) {
-            const isPrivate = state.currentCategory.toLowerCase().includes("private");
-            database[state.currentCategory].push({ id: "c_" + Date.now(), label, img: imgUrl, p: isPrivate });
-            saveDb(); render();
-        }
-    }
-
+    function addNewCategory() { const name = prompt("Folder Name:"); if (name) { database[name] = []; state.currentCategory = name; saveDb(); render(); } }
+    function deleteCurrentCategory() { if (confirm(`Delete folder?`)) { delete database[state.currentCategory]; state.currentCategory = Object.keys(database)[0]; saveDb(); render(); } }
+    function addLinkCard() { const label = prompt("Card Name:"); const imgUrl = prompt("ImgLink URL:"); if (label && imgUrl) { const isPrivate = state.currentCategory.toLowerCase().includes("private"); database[state.currentCategory].push({ id: "c_" + Date.now(), label, img: imgUrl, p: isPrivate }); saveDb(); render(); } }
     function addToFirstEmptySlot(card) { const idx = state.routine.findIndex(s => s === null); if (idx !== -1) { state.routine[idx] = card; render(); } }
     function removeFromSlot(index) { state.routine[index] = null; render(); }
     function clearRoutine() { state.routine = Array(SLOT_COUNT).fill(null); render(); }
     function deleteFromLibrary(index) { if(confirm("Delete card?")) { database[state.currentCategory].splice(index, 1); saveDb(); render(); } }
-
-    function sendToPartner() {
-        const data = JSON.stringify({ r: state.routine, db: database });
-        const encoded = btoa(unescape(encodeURIComponent(data)));
-        const shareUrl = window.location.href.split('?')[0] + "?data=" + encoded;
-        const el = document.createElement("textarea");
-        el.value = shareUrl; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
-        alert("Link copied!");
-    }
+    function sendToPartner() { const data = JSON.stringify({ r: state.routine, db: database }); const encoded = btoa(unescape(encodeURIComponent(data))); const shareUrl = window.location.href.split('?')[0] + "?data=" + encoded; const el = document.createElement("textarea"); el.value = shareUrl; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el); alert("Link copied!"); }
 
     window.onload = () => {
         const params = new URLSearchParams(window.location.search);
