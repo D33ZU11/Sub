@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Visual Board - Private Edition</title>
+    <style>
+        :root {
+            --bg: #f1f5f9; --primary: #2563eb; --folder: #64748b;
+            --text: #1e293b; --danger: #ef4444; --success: #22c55e; --locked: #6366f1;
+        }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .routine-section { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; border-top: 6px solid var(--primary); }
+        .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 10px; }
+        .slot { aspect-ratio: 1 / 1; border: 2px dashed #cbd5e1; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: #fdfdfd; overflow: hidden; position: relative; }
+        .slot.filled { border-style: solid; border-color: var(--primary); background: white; }
+        .is-blurred { filter: blur(8px); opacity: 0.6; }
+        .lock-overlay { position: absolute; font-size: 1.2rem; z-index: 5; }
+        .pec-card { width: 100%; height: 100%; padding: 4px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: space-between; }
+        .pec-card img { width: 90%; height: 70%; object-fit: contain; }
+        .card-label { font-size: 0.7rem; font-weight: 800; line-height: 1; margin-bottom: 2px; }
+        .btn-send { width: 100%; background: var(--primary); color: white; padding: 15px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; box-shadow: 0 4px 0 #1d4ed8; }
+        .category-container { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .category-nav { display: flex; gap: 8px; overflow-x: auto; flex-grow: 1; padding-bottom: 5px; }
+        .folder-btn { background: var(--folder); color: white; padding: 10px 18px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .folder-btn.active { background: #000; }
+        .folder-btn.is-locked-tab { background: var(--locked); }
+        .folder-btn.is-locked-tab::after { content: ' 🔒'; font-size: 0.7rem; }
+        .add-folder-btn { background: var(--success); color: white; width: 42px; height: 42px; border-radius: 12px; border: none; font-size: 1.8rem; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .library-section { background: #e2e8f0; padding: 15px; border-radius: 20px; }
+        .library-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 12px; }
+        .lib-card-wrapper { position: relative; aspect-ratio: 1/1; }
+        .lib-card { background: white; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
+        .lib-card img { width: 80%; height: 70%; object-fit: contain; }
+        .del-btn { position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 22px; height: 22px; border: 2px solid white; font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; }
+        .btn-del-folder { background: white; border: 1px solid var(--danger); color: var(--danger); font-size: 0.7rem; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+        .add-custom-btn { background: #cbd5e1; color: #475569; font-weight: bold; font-size: 1.5rem; border: 2px dashed #94a3b8; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 90px; }
+        @media (max-width: 600px) { .grid-6 { grid-template-columns: repeat(3, 1fr); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="routine-section">
+        <h2 style="font-size: 0.9rem; margin: 0; margin-bottom: 10px;">⏳ Visual Sequence</h2>
+        <div id="routineGrid" class="grid-6"></div>
+        <button class="btn-send" onclick="sendToPartner()">🔗 Create WhatsApp Link</button>
+        <button onclick="clearRoutine()" style="background:none; border:none; color:gray; text-decoration:underline; font-size:0.7rem; margin-top:10px; width:100%;">Clear All</button>
+    </div>
+
+    <div class="category-container">
+        <div id="categoryNav" class="category-nav"></div>
+        <button class="add-folder-btn" title="Add New Folder" onclick="addNewCategory()">+</button>
+    </div>
+
+    <div class="library-section">
+        <div class="library-header">
+            <span id="currentCatLabel" style="font-weight: bold; font-size: 0.9rem; color: #475569;">Select a Category</span>
+            <button id="delFolderBtn" class="btn-del-folder" onclick="deleteCurrentCategory()">Delete Folder</button>
+        </div>
+        <div id="libraryGrid" class="library-grid"></div>
+    </div>
+</div>
+
+<script src="library.js"></script>
+
+<script>
+    const PASSCODE = "6969";
+    const SLOT_COUNT = 6;
+    
+    // Fallback if library.js fails to load
+    const defaultData = typeof INITIAL_DB !== 'undefined' ? INITIAL_DB : { "Main": [] };
+
+    // Loads from Browser Memory OR the library.js file
+    let database = JSON.parse(localStorage.getItem('pecs_db_v4')) || defaultData;
+    
+    let state = { 
+        routine: Array(SLOT_COUNT).fill(null), 
+        currentCategory: Object.keys(database)[0],
+        unlocked: false 
+    };
+
+    function saveDb() { localStorage.setItem('pecs_db_v4', JSON.stringify(database)); }
+
+    function isLocked(name) {
+        if(!name) return false;
+        const n = name.toLowerCase();
+        return (n.includes("private") || n.includes("adult")) && !state.unlocked;
+    }
+
+    function checkPass() {
+        const entry = prompt("Enter Passcode:");
+        if (entry === PASSCODE) { state.unlocked = true; render(); return true; }
+        alert("Incorrect."); return false;
+    }
+
+    function render() {
+        const routineEl = document.getElementById('routineGrid');
+        routineEl.innerHTML = state.routine.map((item, i) => {
+            if (!item) return `<div class="slot"></div>`;
+            const isPrivateCard = item.p === true && !state.unlocked;
+            return `<div class="slot filled" onclick="${isPrivateCard ? 'checkPass()' : `removeFromSlot(${i})`}">${isPrivateCard ? '<div class="lock-overlay">🔒</div>' : ''}<div class="pec-card ${isPrivateCard ? 'is-blurred' : ''}"><img src="${item.img}"><div class="card-label">${item.label}</div></div></div>`;
+        }).join('');
+
+        const navEl = document.getElementById('categoryNav');
+        const categories = Object.keys(database);
+        navEl.innerHTML = categories.map(cat => {
+            const isLockTab = cat.toLowerCase().includes("private") || cat.toLowerCase().includes("adult");
+            return `<button class="folder-btn ${state.currentCategory === cat ? 'active' : ''} ${isLockTab ? 'is-locked-tab' : ''}" onclick="setCategory('${cat}')">${cat}</button>`;
+        }).join('');
+
+        const libEl = document.getElementById('libraryGrid');
+        const currentCatLabel = document.getElementById('currentCatLabel');
+        if (isLocked(state.currentCategory)) {
+            currentCatLabel.innerText = "Locked Folder";
+            libEl.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding: 40px; cursor:pointer;" onclick="checkPass()">🔒 Tap to unlock folder</div>`;
+            return;
+        }
+
+        currentCatLabel.innerText = state.currentCategory || "No Folders";
+        document.getElementById('delFolderBtn').style.display = categories.length > 0 ? "block" : "none";
+
+        let libHtml = (database[state.currentCategory] || []).map((item, index) => `
+            <div class="lib-card-wrapper">
+                <div class="del-btn" onclick="deleteFromLibrary(${index})">×</div>
+                <div class="lib-card" onclick='addToFirstEmptySlot(${JSON.stringify(item)})'>
+                    <img src="${item.img}">
+                    <div class="card-label">${item.label}</div>
+                </div>
+            </div>
+        `).join('');
+        libHtml += `<div class="add-custom-btn" onclick="addLinkCard()">+</div>`;
+        libEl.innerHTML = libHtml;
+    }
+
+    function setCategory(cat) { if (isLocked(cat)) { if (!checkPass()) return; } state.currentCategory = cat; render(); }
+
+    function addNewCategory() {
+        const name = prompt("Folder Name:");
+        if (name) { database[name] = []; state.currentCategory = name; saveDb(); render(); }
+    }
+
+    function deleteCurrentCategory() {
+        if (confirm(`Delete folder?`)) { delete database[state.currentCategory]; state.currentCategory = Object.keys(database)[0]; saveDb(); render(); }
+    }
+
+    function addLinkCard() {
+        const label = prompt("Card Name:");
+        const imgUrl = prompt("ImgLink URL:");
+        if (label && imgUrl) {
+            const isPrivate = state.currentCategory.toLowerCase().includes("private");
+            database[state.currentCategory].push({ id: "c_" + Date.now(), label, img: imgUrl, p: isPrivate });
+            saveDb(); render();
+        }
+    }
+
+    function addToFirstEmptySlot(card) { const idx = state.routine.findIndex(s => s === null); if (idx !== -1) { state.routine[idx] = card; render(); } }
+    function removeFromSlot(index) { state.routine[index] = null; render(); }
+    function clearRoutine() { state.routine = Array(SLOT_COUNT).fill(null); render(); }
+    function deleteFromLibrary(index) { if(confirm("Delete card?")) { database[state.currentCategory].splice(index, 1); saveDb(); render(); } }
+
+    function sendToPartner() {
+        const data = JSON.stringify({ r: state.routine, db: database });
+        const encoded = btoa(unescape(encodeURIComponent(data)));
+        const shareUrl = window.location.href.split('?')[0] + "?data=" + encoded;
+        const el = document.createElement("textarea");
+        el.value = shareUrl; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
+        alert("Link copied!");
+    }
+
+    window.onload = () => {
+        const params = new URLSearchParams(window.location.search);
+        const sharedData = params.get('data');
+        if (sharedData) {
+            try {
+                const decoded = JSON.parse(decodeURIComponent(escape(atob(sharedData))));
+                state.routine = decoded.r; database = decoded.db; saveDb();
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } catch(e) {}
+        }
+        render();
+    };
+</script>
+</body>
+</html>
